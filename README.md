@@ -1,5 +1,3 @@
-**INTERNAL**
-
 # ClamshellKeeper
 
 Use this MacBook with the lid closed on an external monitor **without the charger plugged in**.
