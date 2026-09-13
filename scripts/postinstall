@@ -1,0 +1,31 @@
+#!/bin/sh
+# Runs as root from Installer. Must exit 0 or the whole install reports failure.
+set -u
+
+LABEL="com.azizzet.clamshellkeeper.helper"
+PLIST="/Library/LaunchDaemons/$LABEL.plist"
+HELPER="/usr/local/libexec/clamshellkeeperd"
+
+# The socket is owned by whoever is at the console — the only account that may
+# talk to the helper.
+SOCK_UID="$(stat -f %u /dev/console 2>/dev/null || echo 0)"
+/usr/libexec/PlistBuddy -c "Set :Sockets:Listeners:SockPathOwner $SOCK_UID" "$PLIST" >/dev/null 2>&1 || true
+
+/usr/sbin/chown root:wheel "$PLIST" "$HELPER"
+/bin/chmod 644 "$PLIST"
+/bin/chmod 755 "$HELPER"
+
+# bootstrap takes a PATH; bootout/enable take system/<Label>. Mixing the two is
+# the most common way this fails.
+/bin/launchctl bootout "system/$LABEL" 2>/dev/null || true
+/bin/launchctl enable "system/$LABEL" 2>/dev/null || true
+/bin/launchctl bootstrap system "$PLIST" 2>/dev/null || true
+
+/usr/bin/touch /var/log/clamshellkeeper.log
+/usr/sbin/chown root:wheel /var/log/clamshellkeeper.log
+/bin/chmod 640 /var/log/clamshellkeeper.log
+
+/bin/launchctl asuser "$SOCK_UID" /bin/launchctl kickstart -k "gui/$SOCK_UID/com.azizzet.clamshellkeeper" 2>/dev/null || true
+/usr/bin/open -a /Applications/ClamshellKeeper.app 2>/dev/null || true
+
+exit 0

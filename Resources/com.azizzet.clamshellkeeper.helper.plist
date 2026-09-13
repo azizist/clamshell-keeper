@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.azizzet.clamshellkeeper.helper</string>
+
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/libexec/clamshellkeeperd</string>
+	</array>
+
+	<!-- Fires at every boot, before login. The helper's first act is to force
+	     SleepDisabled off, so a crash, a panic, or powerd re-applying the
+	     persisted preference can never leave a Mac unable to sleep. -->
+	<key>RunAtLoad</key>
+	<true/>
+
+	<!-- Long-running: it owns the deadman timer and the reconciliation tick. -->
+	<key>KeepAlive</key>
+	<true/>
+
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+
+	<key>ProcessType</key>
+	<string>Background</string>
+
+	<!-- launchd creates and owns the socket, so the kernel enforces who may
+	     connect. SockPathOwner is substituted with the console user's uid at
+	     install time (PlistBuddy, not sed, so the file is always a valid
+	     plist). It defaults to 0, which fails closed: if substitution ever
+	     fails, only root can connect and the app simply reports the helper
+	     as unreachable. Property lists have no octal: 384 is 0600. -->
+	<key>Sockets</key>
+	<dict>
+		<key>Listeners</key>
+		<dict>
+			<key>SockPathName</key>
+			<string>/var/run/clamshellkeeper.sock</string>
+			<key>SockPathOwner</key>
+			<integer>0</integer>
+			<key>SockPathMode</key>
+			<integer>384</integer>
+		</dict>
+	</dict>
+
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+
+	<key>StandardOutPath</key>
+	<string>/var/log/clamshellkeeper.log</string>
+	<key>StandardErrorPath</key>
+	<string>/var/log/clamshellkeeper.log</string>
+</dict>
+</plist>
