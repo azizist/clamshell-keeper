@@ -18,6 +18,31 @@ You do **not** need anything to turn the built-in screen off. When the lid close
 
 ---
 
+## Requirements
+
+Built and tested on **Apple Silicon** (M2 Pro) running **macOS 26.5.2**. Nothing
+else has been tried.
+
+The binaries have a macOS 13.0 deployment target, so they should launch further
+back than that, but two of the load-bearing pieces are not contractual:
+
+- **`pmset disablesleep` is undocumented.** It is absent from `man pmset`,
+  present in the binary, and traceable through Apple's published
+  `PowerManagement` and `xnu` sources. Apple can change or remove it in any
+  update. Every write is verified by reading `IOPMrootDomain` back, so a change
+  surfaces as a visible "arm failed" rather than a Mac that quietly sleeps in
+  your bag.
+- **The helper's display check uses `IOMobileFramebufferShim`**, a private,
+  undocumented, Apple-Silicon-specific IOKit class. On an Intel Mac — or after
+  an OS update that renames it — the check returns *unknown* rather than
+  *absent*, and the predicate fails closed: the tool simply never arms. It will
+  not misbehave, it just will not work until that check is reworked for the
+  platform.
+
+Running this on Intel therefore needs a different display check in
+`Sources/Helper/Sensors.swift`; nothing else in the design is
+architecture-specific.
+
 ## Test
 
 ```bash
