@@ -31,6 +31,10 @@ chmod 640 /var/log/clamshellkeeper.log
 
 echo "==> loading helper"
 launchctl bootout "system/$LABEL" 2>/dev/null || true
+# launchd creates the socket itself and refuses to bind over an existing path
+# ("Bootstrap failed: 5: Input/output error"), so a reinstall must clear the one
+# the previous load left behind. Safe here: nothing is listening after bootout.
+rm -f /var/run/clamshellkeeper.sock
 launchctl enable "system/$LABEL" 2>/dev/null || true
 launchctl bootstrap system "$PLIST"
 
@@ -38,6 +42,11 @@ sleep 1
 echo "==> state after install (expect SleepDisabled = No)"
 ioreg -n IOPMrootDomain -r -d 1 | grep SleepDisabled || echo "  (key absent — also fine)"
 
+echo "==> restarting the menu bar app"
+/usr/bin/pkill -x ClamshellKeeper 2>/dev/null || true
+sleep 1
+/bin/launchctl asuser "$SOCK_UID" /usr/bin/open -a /Applications/ClamshellKeeper.app || true
+
 echo
-echo "Installed. Open ClamshellKeeper from /Applications; it lives in the menu bar."
+echo "Installed. ClamshellKeeper is running in the menu bar."
 echo "Uninstall any time: sudo /usr/local/libexec/clamshellkeeper-uninstall.sh"

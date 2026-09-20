@@ -18,6 +18,8 @@ SOCK_UID="$(stat -f %u /dev/console 2>/dev/null || echo 0)"
 # bootstrap takes a PATH; bootout/enable take system/<Label>. Mixing the two is
 # the most common way this fails.
 /bin/launchctl bootout "system/$LABEL" 2>/dev/null || true
+# See install.sh: launchd will not bind over the socket a previous load left.
+/bin/rm -f /var/run/clamshellkeeper.sock
 /bin/launchctl enable "system/$LABEL" 2>/dev/null || true
 /bin/launchctl bootstrap system "$PLIST" 2>/dev/null || true
 

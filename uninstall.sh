@@ -16,6 +16,9 @@ echo "==> restoring normal sleep"
 echo "==> unloading helper"
 /bin/launchctl bootout "system/$LABEL" 2>/dev/null || true
 
+echo "==> quitting the app"
+/usr/bin/pkill -x ClamshellKeeper 2>/dev/null || true
+
 echo "==> removing files"
 rm -f "/Library/LaunchDaemons/$LABEL.plist"
 rm -f /usr/local/libexec/clamshellkeeperd
