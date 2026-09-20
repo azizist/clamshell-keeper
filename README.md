@@ -75,16 +75,49 @@ root and touches no machine state.
 
 ## Install
 
+### From source (recommended)
+
 ```bash
 ./build.sh
 sudo ./install.sh
 ```
 
-or double-click `dist/ClamshellKeeper-1.0.pkg` (equivalently `sudo installer -pkg dist/ClamshellKeeper-1.0.pkg -target /`).
+This also produces `dist/ClamshellKeeper-1.0.pkg`, which you can double-click, or
+install with `sudo installer -pkg dist/ClamshellKeeper-1.0.pkg -target /`.
 
-**Run `./phase0-test.sh` first if you have not already.** It proves the underlying mechanism works on this Mac and puts everything back afterwards, whatever happens.
+**Run `./phase0-test.sh` first if you have not already.** It proves the underlying
+mechanism works on this Mac and puts everything back afterwards, whatever happens.
 
 Open ClamshellKeeper from `/Applications`; it lives in the menu bar with no Dock icon.
+
+### From a downloaded release
+
+The package is **not signed or notarized** — doing so requires a paid Apple
+Developer ID, and there is no free path to it. A package built on your own Mac
+installs without complaint because it never gets a `com.apple.quarantine`
+attribute. One you *download* does, and Gatekeeper will refuse it as coming from
+an unidentified developer.
+
+So a downloaded `.pkg` needs one of these:
+
+```bash
+xattr -d com.apple.quarantine ~/Downloads/ClamshellKeeper-1.0.pkg
+```
+
+…or right-click the package in Finder, choose **Open**, then **Open anyway**.
+
+Building from source avoids the question entirely, and has the advantage that
+you can read what you are about to give a root LaunchDaemon to.
+
+### What gets installed
+
+```
+/Applications/ClamshellKeeper.app                                 menu bar app
+/usr/local/libexec/clamshellkeeperd                               root helper
+/Library/LaunchDaemons/com.azizzet.clamshellkeeper.helper.plist   loads the helper at boot
+/usr/local/libexec/clamshellkeeper-uninstall.sh                   survives deleting the app
+/var/log/clamshellkeeper.log                                      helper log, root-only
+```
 
 ## Use
 
