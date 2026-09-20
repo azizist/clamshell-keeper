@@ -9,5 +9,5 @@ mkdir -p build
 	-framework IOKit -framework SystemConfiguration \
 	-o build/tests \
 	Sources/Shared/Protocol.swift Sources/Helper/Policy.swift Sources/Helper/Sensors.swift \
-	Tests/main.swift
+	Sources/App/DisplayPolicy.swift Tests/main.swift
 exec ./build/tests

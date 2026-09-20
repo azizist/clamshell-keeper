@@ -17,6 +17,17 @@ final class DisplayWatcher {
     /// source of truth and a heartbeat can never report an unconfirmed zero.
     private(set) var externalCount = 0
     private var onChange: ((Int) -> Void)?
+    /// Fires after every settled recount, including ones where the external
+    /// count did not move. The power path only cares about changes; the
+    /// built-in-display path also needs the lid-open transition, which changes
+    /// nothing about the external count but is exactly when the panel comes
+    /// back and may need turning off again.
+    private var onSettled: (() -> Void)?
+    /// Fires ~250ms after any reconfiguration that leaves no external display.
+    /// Deliberately much faster than `zeroConfirmationDelay`: waiting 2.5s is
+    /// right when the cost of being wrong is "the Mac stayed awake", and wrong
+    /// when it is "the screen is black".
+    private var onExternalLoss: (() -> Void)?
     private var debounce: DispatchWorkItem?
     private var zeroConfirmation: DispatchWorkItem?
 
@@ -25,14 +36,19 @@ final class DisplayWatcher {
     /// transition artefact is filtered out entirely.
     private static let zeroConfirmationDelay: TimeInterval = 2.5
 
-    func start(onChange: @escaping (Int) -> Void) {
+    func start(onChange: @escaping (Int) -> Void,
+               onSettled: @escaping () -> Void = {},
+               onExternalLoss: @escaping () -> Void = {}) {
         self.onChange = onChange
+        self.onSettled = onSettled
+        self.onExternalLoss = onExternalLoss
         externalCount = Self.currentExternalCount()
 
         CGDisplayRegisterReconfigurationCallback({ _, flags, _ in
             // The "about to change" pass reports a list that has not settled.
             guard !flags.contains(.beginConfigurationFlag) else { return }
             DisplayWatcher.shared.scheduleRecount()
+            DisplayWatcher.shared.scheduleLossCheck()
         }, nil)
 
         NotificationCenter.default.addObserver(
@@ -50,10 +66,24 @@ final class DisplayWatcher {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
     }
 
+    /// The safe direction, and the only one allowed to skip the debounce: it
+    /// never turns anything off, it only asks the controller to reconsider.
+    /// Never called synchronously from the reconfiguration callback — the
+    /// CoreGraphics header is explicit that callbacks must not reconfigure.
+    private func scheduleLossCheck() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self, Self.currentExternalCount() == 0 else { return }
+            self.onExternalLoss?()
+        }
+    }
+
     private func recount() {
         let count = Self.currentExternalCount()
         zeroConfirmation?.cancel()
         zeroConfirmation = nil
+        // Fires even when the count is unchanged — disabling the built-in does
+        // not move it, so this is the only signal the display path would get.
+        defer { onSettled?() }
         guard count != externalCount else { return }
 
         if count == 0 {
@@ -61,6 +91,7 @@ final class DisplayWatcher {
                 guard let self, Self.currentExternalCount() == 0 else { return }
                 self.externalCount = 0
                 self.onChange?(0)
+                self.onSettled?()
             }
             zeroConfirmation = work
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.zeroConfirmationDelay,

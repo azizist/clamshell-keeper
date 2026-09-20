@@ -100,6 +100,60 @@ check(decide(grant(floor: 20), sensors(battery: nil)).0,
 // Lid state alone decides nothing — it is the monitor that matters.
 check(decide(grant(), sensors(lidClosed: false)).0, "armed: lid open is fine")
 
+// MARK: - DisplayPolicy: turning the built-in panel off is the dangerous
+// direction, so every gate on it is tested, and so is the rule that the safe
+// direction is never gated.
+
+func displays(builtinActive: Bool = true,
+              externalActive: Int = 1,
+              physicalConfirmed: Bool = true,
+              lidClosed: Bool = false,
+              available: Bool = true,
+              failures: Int = 0) -> DisplaySnapshot {
+    DisplaySnapshot(builtinActive: builtinActive, externalActive: externalActive,
+                    physicalExternalConfirmed: physicalConfirmed, lidClosed: lidClosed,
+                    mechanismAvailable: available, disableFailures: failures)
+}
+
+func act(_ intent: Bool, _ d: DisplaySnapshot) -> DisplayAction {
+    DisplayPolicy.decide(externalOnly: intent, d).0
+}
+
+// The one way to turn it off.
+check(act(true, displays()) == .disable,
+      "disable: asked for, monitor present and confirmed, lid open")
+
+// Every gate on the dangerous direction.
+check(act(false, displays()) == .none, "no-op: not asked for, built-in already on")
+check(act(true, displays(externalActive: 0)) == .none, "refuse: no external display")
+check(act(true, displays(physicalConfirmed: false)) == .none,
+      "refuse: external unconfirmed by the helper (Sidecar/AirPlay)")
+check(act(true, displays(available: false)) == .none, "refuse: private API missing")
+check(act(true, displays(failures: DisplayPolicy.maxDisableFailures)) == .none,
+      "refuse: too many consecutive failures")
+check(act(true, displays(lidClosed: true)) == .none, "refuse: lid closed")
+
+// The safe direction, which must never be gated by anything.
+check(act(false, displays(builtinActive: false)) == .enable, "restore: user turned it off")
+check(act(true, displays(builtinActive: false, externalActive: 0)) == .enable,
+      "restore: external display disappeared")
+check(act(true, displays(builtinActive: false, physicalConfirmed: false)) == .enable,
+      "restore: external no longer confirmed")
+check(act(true, displays(builtinActive: false, available: false)) == .enable,
+      "restore: private API vanished under us")
+check(act(false, displays(builtinActive: false, failures: 99)) == .enable,
+      "restore: the disable-failure latch must never block a restore")
+check(act(true, displays(builtinActive: false)) == .none,
+      "stay off: still asked for, monitor still there")
+check(act(true, displays(failures: 99)) == .none,
+      "latch only ever applies while the built-in is still on")
+
+// Lid closed is the clamshell feature's territory: do nothing either way.
+check(act(true, displays(builtinActive: false, lidClosed: true)) == .none,
+      "lid closed: no attempt to light a panel inside a shut lid")
+check(act(false, displays(builtinActive: false, lidClosed: true)) == .none,
+      "lid closed: no enable attempt either")
+
 print("")
 print(failures == 0 ? "ALL PASS" : "\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)
