@@ -136,6 +136,12 @@ The menu's first line always tells you the real state, read back from the kernel
 Tick **Use external display only** — or press **⌃⌥D** from anywhere — to turn
 the built-in panel off with the lid open.
 
+If there is no external display attached, the toggle refuses and says so in a
+banner rather than doing nothing — and, importantly, it does **not** quietly
+remember the request. Arming it while nothing is plugged in would mean your
+laptop screen going black the next time you dock, without you having touched
+anything.
+
 The shortcut is deliberately only two modifiers, because it doubles as the
 blind-recovery key: if the built-in is off and the external goes dark, pressing
 ⌃⌥D brings the panel back without needing to see a menu. It is registered with

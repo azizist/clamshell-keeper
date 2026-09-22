@@ -298,9 +298,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             externalOnlyItem.toolTip = "Shortcut: \(Hotkey.displayName)"
             externalOnlyItem.title = "Use external display only    \(Hotkey.displayName)"
         }
-        externalOnlyItem.isEnabled = InternalDisplay.isAvailable
-            && !InternalDisplay.lidClosed()
-            && (externalOnly || DisplayWatcher.shared.externalCount > 0)
         menu.addItem(externalOnlyItem)
 
         menu.addItem(.separator())
@@ -351,10 +348,42 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func toggleExternalOnly() {
+        if !externalOnly {
+            // Refuse outright rather than arming the intent for later. Silently
+            // remembering "external only" while nothing is plugged in means the
+            // laptop screen goes black the next time you dock, without you
+            // having touched anything — which is worse than doing nothing.
+            guard InternalDisplay.isAvailable else {
+                Toast.show("Turning the built-in display off isn't supported on this macOS version")
+                return
+            }
+            guard DisplayWatcher.shared.externalCount > 0 else {
+                Toast.show("No external display detected")
+                return
+            }
+            guard !InternalDisplay.lidClosed() else {
+                Toast.show("Open the lid first")
+                return
+            }
+        }
+
         externalOnly.toggle()
         let wasActive = InternalDisplay.builtinIsActive()
         reconcileDisplay()
-        if externalOnly, wasActive, !InternalDisplay.builtinIsActive() { confirmEngagement() }
+
+        if externalOnly {
+            if wasActive, !InternalDisplay.builtinIsActive() {
+                confirmEngagement()
+            } else if InternalDisplay.builtinIsActive() {
+                // Asked for, allowed, and still did not happen.
+                externalOnly = false
+                Toast.show(displayReason.isEmpty
+                    ? "Couldn't turn the built-in display off"
+                    : "Couldn't turn the built-in display off — \(displayReason)")
+            }
+        } else {
+            Toast.show("Built-in display on")
+        }
     }
 
     @objc private func toggleBatteryFloor() {
