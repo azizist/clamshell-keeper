@@ -1,5 +1,6 @@
 import AppKit
 import CoreGraphics
+import IOKit
 
 /// Answers "is an external display attached?" from the user session, where
 /// CoreGraphics is actually trustworthy.
@@ -28,6 +29,16 @@ final class DisplayWatcher {
     /// right when the cost of being wrong is "the Mac stayed awake", and wrong
     /// when it is "the screen is black".
     private var onExternalLoss: (() -> Void)?
+    /// Fires on every lid open or close. Opening the lid is the moment the
+    /// built-in panel may need to come back, and waiting for a display
+    /// reconfiguration callback to imply it is not good enough.
+    private var onLidChange: (() -> Void)?
+    private var lidPort: IONotificationPortRef?
+    private var lidNotifier: io_object_t = 0
+
+    /// iokit_family_msg(sub_iokit_powermanagement, 0x100). The IOPM.h macro
+    /// does not import into Swift; the helper expands the same constant.
+    private static let clamshellStateChanged: UInt32 = 0xE003_4100
     private var debounce: DispatchWorkItem?
     private var zeroConfirmation: DispatchWorkItem?
 
@@ -38,10 +49,13 @@ final class DisplayWatcher {
 
     func start(onChange: @escaping (Int) -> Void,
                onSettled: @escaping () -> Void = {},
-               onExternalLoss: @escaping () -> Void = {}) {
+               onExternalLoss: @escaping () -> Void = {},
+               onLidChange: @escaping () -> Void = {}) {
         self.onChange = onChange
         self.onSettled = onSettled
         self.onExternalLoss = onExternalLoss
+        self.onLidChange = onLidChange
+        startLidWatch()
         externalCount = Self.currentExternalCount()
 
         CGDisplayRegisterReconfigurationCallback({ _, flags, _ in
@@ -64,6 +78,25 @@ final class DisplayWatcher {
         let work = DispatchWorkItem { [weak self] in self?.recount() }
         debounce = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+    }
+
+    private func startLidWatch() {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault,
+                                                  IOServiceMatching("IOPMrootDomain"))
+        guard service != IO_OBJECT_NULL else { return }
+        defer { IOObjectRelease(service) }
+        let port = IONotificationPortCreate(kIOMainPortDefault)
+        lidPort = port
+        let callback: IOServiceInterestCallback = { _, _, messageType, _ in
+            guard messageType == DisplayWatcher.clamshellStateChanged else { return }
+            // Never reconfigure from inside the callback.
+            DispatchQueue.main.async { DisplayWatcher.shared.onLidChange?() }
+        }
+        IOServiceAddInterestNotification(port, service, kIOGeneralInterest,
+                                         callback, nil, &lidNotifier)
+        CFRunLoopAddSource(CFRunLoopGetMain(),
+                           IONotificationPortGetRunLoopSource(port).takeUnretainedValue(),
+                           .defaultMode)
     }
 
     /// The safe direction, and the only one allowed to skip the debounce: it

@@ -30,13 +30,24 @@ chown root:wheel /var/log/clamshellkeeper.log
 chmod 640 /var/log/clamshellkeeper.log
 
 echo "==> loading helper"
-launchctl bootout "system/$LABEL" 2>/dev/null || true
-# launchd creates the socket itself and refuses to bind over an existing path
-# ("Bootstrap failed: 5: Input/output error"), so a reinstall must clear the one
-# the previous load left behind. Safe here: nothing is listening after bootout.
+# Wait for the old instance to actually exit. bootout returns as soon as the
+# signal is sent, and bootstrapping into a domain that is still draining fails
+# with "Bootstrap failed: 5: Input/output error" — which is what made the first
+# two reinstalls fail and a later retry succeed.
+launchctl bootout --wait "system/$LABEL" 2>/dev/null || launchctl bootout "system/$LABEL" 2>/dev/null || true
+# launchd creates the socket itself and will not bind over a leftover one.
 rm -f /var/run/clamshellkeeper.sock
 launchctl enable "system/$LABEL" 2>/dev/null || true
-launchctl bootstrap system "$PLIST"
+attempt=0
+until launchctl bootstrap system "$PLIST" 2>/dev/null; do
+	attempt=$((attempt + 1))
+	if [ "$attempt" -ge 10 ]; then
+		echo "bootstrap still failing after $attempt attempts:" >&2
+		launchctl bootstrap system "$PLIST" >&2
+		exit 1
+	fi
+	sleep 1
+done
 
 sleep 1
 echo "==> state after install (expect SleepDisabled = No)"

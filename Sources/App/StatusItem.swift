@@ -29,6 +29,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var displayReason = ""
     private var disableFailures = 0
     private var reconcilingDisplay = false
+    private var hotkeyRegistered = false
+    private var displayRetry: DispatchWorkItem?
 
     /// What the user asked for, remembered across restarts. Auto behaviour
     /// hangs off this: while it is on, the app arms whenever a monitor is
@@ -64,7 +66,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DisplayWatcher.shared.start(
             onChange: { [weak self] _ in self?.push() },
             onSettled: { [weak self] in self?.reconcileDisplay() },
-            onExternalLoss: { [weak self] in self?.reconcileDisplay() })
+            onExternalLoss: { [weak self] in self?.reconcileDisplay() },
+            onLidChange: { [weak self] in self?.reconcileDisplay() })
+
+        hotkeyRegistered = Hotkey.register { [weak self] in self?.toggleExternalOnly() }
 
         // Never go to sleep with the built-in disabled. Sleep and clamshell
         // transitions renumber display IDs, and a disabled display is absent
@@ -158,6 +163,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 disableFailures = 0
             } else {
                 displayReason = "could not turn the built-in display back on"
+                // Keep trying every second rather than waiting for the next
+                // event or the 20s heartbeat. Terminates on its own: once the
+                // panel is back, the next decision is .none.
+                let retry = DispatchWorkItem { [weak self] in self?.reconcileDisplay() }
+                displayRetry?.cancel()
+                displayRetry = retry
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: retry)
             }
         case .disable:
             if InternalDisplay.disable() {
@@ -280,6 +292,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                           action: #selector(toggleExternalOnly), keyEquivalent: "")
         externalOnlyItem.target = self
         externalOnlyItem.state = externalOnly ? .on : .off
+        if hotkeyRegistered {
+            // Shown as a hint only — the hotkey is registered system-wide, not
+            // by AppKit, so it works whether or not the menu is open.
+            externalOnlyItem.toolTip = "Shortcut: \(Hotkey.displayName)"
+            externalOnlyItem.title = "Use external display only    \(Hotkey.displayName)"
+        }
         externalOnlyItem.isEnabled = InternalDisplay.isAvailable
             && !InternalDisplay.lidClosed()
             && (externalOnly || DisplayWatcher.shared.externalCount > 0)

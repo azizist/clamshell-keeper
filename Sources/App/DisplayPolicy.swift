@@ -41,6 +41,14 @@ enum DisplayPolicy {
     static let maxDisableFailures = 3
 
     static func decide(externalOnly intent: Bool, _ display: DisplaySnapshot) -> (DisplayAction, String) {
+        // THE RULE, ahead of everything else: lid open and no external display
+        // means the built-in must be on. No setting, no intent, no failure
+        // count and no sensor doubt may override it, because in that state it
+        // is the only screen there is.
+        if !display.lidClosed, display.externalActive < 1, !display.builtinActive {
+            return (.enable, "no external display")
+        }
+
         // With the lid shut the built-in is legitimately gone — the clamshell
         // feature's territory, not ours. Do nothing in either direction rather
         // than repeatedly trying to light a panel inside a closed lid.
@@ -52,7 +60,6 @@ enum DisplayPolicy {
             // Every reason to put it back, checked before any reason to keep it
             // off. Note there is no failure latch here on purpose.
             if !intent { return (.enable, "turned off") }
-            if display.externalActive < 1 { return (.enable, "no external display") }
             if !display.physicalExternalConfirmed { return (.enable, "external display unconfirmed") }
             if !display.mechanismAvailable { return (.enable, "display control unavailable") }
             return (.none, "")

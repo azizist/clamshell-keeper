@@ -148,6 +148,23 @@ check(act(true, displays(builtinActive: false)) == .none,
 check(act(true, displays(failures: 99)) == .none,
       "latch only ever applies while the built-in is still on")
 
+// THE RULE: lid open with no external display means the built-in comes on,
+// whatever else is true. Each of these would be blocked by some other check if
+// the rule were not evaluated first.
+check(act(true, displays(builtinActive: false, externalActive: 0)) == .enable,
+      "rule: lid open, no external, setting still on -> enable")
+check(act(true, displays(builtinActive: false, externalActive: 0,
+                         failures: 99)) == .enable,
+      "rule: beats the failure latch")
+check(act(true, displays(builtinActive: false, externalActive: 0,
+                         available: false)) == .enable,
+      "rule: still tries even if the private API looks unavailable")
+check(act(true, displays(builtinActive: false, externalActive: 0,
+                         physicalConfirmed: true)) == .enable,
+      "rule: a stale 'external confirmed' cannot suppress it")
+check(act(false, displays(builtinActive: false, externalActive: 0)) == .enable,
+      "rule: same with the setting off")
+
 // Lid closed is the clamshell feature's territory: do nothing either way.
 check(act(true, displays(builtinActive: false, lidClosed: true)) == .none,
       "lid closed: no attempt to light a panel inside a shut lid")

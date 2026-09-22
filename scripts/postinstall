@@ -17,11 +17,17 @@ SOCK_UID="$(stat -f %u /dev/console 2>/dev/null || echo 0)"
 
 # bootstrap takes a PATH; bootout/enable take system/<Label>. Mixing the two is
 # the most common way this fails.
-/bin/launchctl bootout "system/$LABEL" 2>/dev/null || true
-# See install.sh: launchd will not bind over the socket a previous load left.
+# --wait matters: bootout returns before the old helper has exited, and
+# bootstrapping mid-drain fails with EIO. See install.sh.
+/bin/launchctl bootout --wait "system/$LABEL" 2>/dev/null || /bin/launchctl bootout "system/$LABEL" 2>/dev/null || true
 /bin/rm -f /var/run/clamshellkeeper.sock
 /bin/launchctl enable "system/$LABEL" 2>/dev/null || true
-/bin/launchctl bootstrap system "$PLIST" 2>/dev/null || true
+attempt=0
+until /bin/launchctl bootstrap system "$PLIST" 2>/dev/null; do
+	attempt=$((attempt + 1))
+	[ "$attempt" -ge 10 ] && break
+	sleep 1
+done
 
 /usr/bin/touch /var/log/clamshellkeeper.log
 /usr/sbin/chown root:wheel /var/log/clamshellkeeper.log

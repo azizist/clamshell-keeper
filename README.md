@@ -133,8 +133,15 @@ The menu's first line always tells you the real state, read back from the kernel
 
 ### Use external display only
 
-Tick **Use external display only** to turn the built-in panel off with the lid
-open. The menu item is greyed out unless it is safe to engage: the private API
+Tick **Use external display only** — or press **⌃⌥D** from anywhere — to turn
+the built-in panel off with the lid open.
+
+The shortcut is deliberately only two modifiers, because it doubles as the
+blind-recovery key: if the built-in is off and the external goes dark, pressing
+⌃⌥D brings the panel back without needing to see a menu. It is registered with
+Carbon's `RegisterEventHotKey`, so it needs no Accessibility permission and
+prompts for nothing. If another app already owns that combination, that app wins
+and ClamshellKeeper logs the failure rather than failing silently. The menu item is greyed out unless it is safe to engage: the private API
 resolved, the lid is open, and there is a confirmed external display.
 
 The first time, a dialog appears on the external asking you to confirm, and
@@ -191,6 +198,7 @@ So the helper, not the app, is the authority:
 
 | Guarantee | Mechanism |
 |---|---|
+| **Lid open with no external display always means the built-in is on** | Checked before anything else, and no setting, intent, failure count or unreadable sensor can override it — in that state it is the only screen you have. The lid is watched directly through IOKit, so opening it acts immediately rather than waiting on a display-reconfiguration callback, and a failed attempt retries every second until it succeeds. |
 | Comes back if the monitor is unplugged | The app re-enables within ~250ms of the reconfiguration event — deliberately far faster than the 2.5s confirmation the power path uses, because the cost of being slow here is a black screen rather than a bit of extra battery. |
 | Never sleeps while disabled | The built-in is restored on `willSleepNotification`, before the machine sleeps. Sleep and clamshell transitions renumber display IDs, and a disabled display appears in no public list, so waking up still disabled is the hardest state to get out of. Costs a flicker on wake; removes the failure mode. |
 | Recovers even if an event is missed | Every reconcile is idempotent and also runs on the 20s heartbeat, so a dropped reconfiguration callback self-heals rather than sticking. |
