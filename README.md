@@ -82,8 +82,8 @@ root and touches no machine state.
 sudo ./install.sh
 ```
 
-This also produces `dist/ClamshellKeeper-1.0.pkg`, which you can double-click, or
-install with `sudo installer -pkg dist/ClamshellKeeper-1.0.pkg -target /`.
+This also produces `dist/ClamshellKeeper-1.1.pkg`, which you can double-click, or
+install with `sudo installer -pkg dist/ClamshellKeeper-1.1.pkg -target /`.
 
 **Run `./phase0-test.sh` first if you have not already.** It proves the underlying
 mechanism works on this Mac and puts everything back afterwards, whatever happens.
@@ -101,7 +101,7 @@ an unidentified developer.
 So a downloaded `.pkg` needs one of these:
 
 ```bash
-xattr -d com.apple.quarantine ~/Downloads/ClamshellKeeper-1.0.pkg
+xattr -d com.apple.quarantine ~/Downloads/ClamshellKeeper-1.1.pkg
 ```
 
 …or right-click the package in Finder, choose **Open**, then **Open anyway**.

@@ -252,5 +252,5 @@ final class Keeper {
 }
 
 enum HelperVersion {
-    static let string = "1.0"
+    static let string = "1.1"
 }

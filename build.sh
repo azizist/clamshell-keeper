@@ -8,7 +8,7 @@ cd "$(dirname "$0")"
 
 APP_ID="com.azizzet.clamshellkeeper"
 HELPER_ID="com.azizzet.clamshellkeeper.helper"
-VERSION="1.0"
+VERSION="1.1"
 SDK="$(/usr/bin/xcrun --sdk macosx --show-sdk-path)"
 TARGET="arm64-apple-macos13.0"   # floor set by SMAppService; not swiftc's 26.0 default
 
