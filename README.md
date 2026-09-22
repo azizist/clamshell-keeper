@@ -192,6 +192,8 @@ So the helper, not the app, is the authority:
 | Guarantee | Mechanism |
 |---|---|
 | Comes back if the monitor is unplugged | The app re-enables within ~250ms of the reconfiguration event — deliberately far faster than the 2.5s confirmation the power path uses, because the cost of being slow here is a black screen rather than a bit of extra battery. |
+| Never sleeps while disabled | The built-in is restored on `willSleepNotification`, before the machine sleeps. Sleep and clamshell transitions renumber display IDs, and a disabled display appears in no public list, so waking up still disabled is the hardest state to get out of. Costs a flicker on wake; removes the failure mode. |
+| Recovers even if an event is missed | Every reconcile is idempotent and also runs on the 20s heartbeat, so a dropped reconfiguration callback self-heals rather than sticking. |
 | Comes back if the app crashes or is force-quit | The change is made with `kCGConfigureForAppOnly`, which macOS reverts when the process dies. **Verified on this machine under `kill -9`:** the panel returned within one second, twice. |
 | Never survives a reboot | Nothing is written to disk. `kCGConfigurePermanently` is the only option that would persist it, and it is never passed. A reboot is therefore a guaranteed way out. |
 | Never engages without a real monitor | CoreGraphics reports Sidecar, AirPlay and DisplayLink as "external". Engaging additionally requires the helper's independent IOKit count of physically attached panels to agree. |

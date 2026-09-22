@@ -66,17 +66,39 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             onSettled: { [weak self] in self?.reconcileDisplay() },
             onExternalLoss: { [weak self] in self?.reconcileDisplay() })
 
-        // The disabled state does not survive sleep/wake, so re-assert rather
-        // than waiting up to 20s for the heartbeat to notice.
+        // Never go to sleep with the built-in disabled. Sleep and clamshell
+        // transitions renumber display IDs, and a disabled display is absent
+        // from every public list, so waking up still disabled is the one state
+        // the app can struggle to get out of. Restoring it first costs a
+        // flicker on wake and removes the failure mode entirely.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { _ in
+                if !InternalDisplay.builtinIsActive() {
+                    NSLog("ClamshellKeeper: restoring the built-in display before sleep")
+                    InternalDisplay.enable(attempts: 2)
+                }
+            }
+
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+                // The helper's status is from before the sleep and says nothing
+                // about what is plugged in now. Discard it so it cannot
+                // authorise a disable; push() refreshes it a moment later.
+                self?.lastStatus = nil
                 self?.reconcileDisplay()
+                self?.push()
             }
 
         // The heartbeat is the deadman switch: stop sending and the helper
         // restores normal sleep within a minute, whatever killed us.
         let timer = Timer(timeInterval: Wire.heartbeatInterval, repeats: true) {
-            [weak self] _ in self?.push()
+            [weak self] _ in
+            self?.push()
+            // Also reconcile on a timer, not only on events. Reconciling is
+            // idempotent, so this costs a state read when nothing is wrong —
+            // and it means a missed reconfiguration callback self-heals within
+            // one heartbeat instead of never.
+            self?.reconcileDisplay()
         }
         RunLoop.main.add(timer, forMode: .common)
         heartbeat = timer
@@ -117,6 +139,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let (action, reason) = DisplayPolicy.decide(externalOnly: externalOnly, snapshot)
         displayReason = reason
         guard action != .none else { return }
+        NSLog("ClamshellKeeper: \(action) — intent=\(externalOnly) builtinActive=\(snapshot.builtinActive) "
+            + "externals=\(snapshot.externalActive) confirmed=\(snapshot.physicalExternalConfirmed) "
+            + "lid=\(snapshot.lidClosed) failures=\(snapshot.disableFailures)")
 
         reconcilingDisplay = true
         defer {

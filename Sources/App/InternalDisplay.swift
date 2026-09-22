@@ -29,6 +29,12 @@ enum InternalDisplay {
     private typealias ConfigureEnabled =
         @convention(c) (CGDisplayConfigRef?, CGDirectDisplayID, Bool) -> CGError
 
+    /// Same shape as CGGetOnlineDisplayList, but SkyLight's own list: it
+    /// includes displays CoreGraphics hides, which is the only way to find a
+    /// display we have disabled.
+    private typealias GetDisplayList =
+        @convention(c) (UInt32, UnsafeMutablePointer<CGDirectDisplayID>?, UnsafeMutablePointer<UInt32>?) -> CGError
+
     /// Resolved once. nil means an OS update took the symbol away, which makes
     /// the whole feature unavailable rather than partially working.
     private static let configureEnabled: ConfigureEnabled? = {
@@ -41,10 +47,22 @@ enum InternalDisplay {
         return nil
     }()
 
+    private static let getDisplayList: GetDisplayList? = {
+        let global = UnsafeMutableRawPointer(bitPattern: -2)
+        for name in ["CGSGetDisplayList", "SLSGetDisplayList"] {
+            if let symbol = dlsym(global, name) {
+                return unsafeBitCast(symbol, to: GetDisplayList.self)
+            }
+        }
+        return nil
+    }()
+
     static var isAvailable: Bool { configureEnabled != nil }
 
-    /// Last known ID of the built-in panel, remembered from when it was last
-    /// visible. Fact 1 above: without this there is no way back.
+    /// Last known ID of the built-in panel. Only a hint: IDs are renumbered
+    /// across sleep and clamshell transitions, so a remembered one can be
+    /// stale, and enabling a stale ID fails silently. Always prefer a live
+    /// lookup — see `builtinID()`.
     private static var lastKnownBuiltinID: CGDirectDisplayID?
 
     // MARK: - Reading
@@ -67,10 +85,28 @@ enum InternalDisplay {
 
     /// Refreshes the remembered ID whenever the panel is visible, and falls
     /// back to the remembered one when it is not.
+    /// Every display SkyLight knows about, including ones we have disabled and
+    /// which therefore appear in neither the online nor the active list.
+    private static func skyLightDisplays() -> [CGDirectDisplayID] {
+        guard let getDisplayList else { return [] }
+        var count: UInt32 = 0
+        guard getDisplayList(0, nil, &count) == .success, count > 0 else { return [] }
+        var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        guard getDisplayList(count, &ids, &count) == .success else { return [] }
+        return Array(ids.prefix(Int(count)))
+    }
+
+    /// Resolved live, in descending order of trust. The remembered ID is the
+    /// last resort rather than the first answer: it is the thing that goes
+    /// stale across a lid cycle, which is precisely when it gets used.
     static func builtinID() -> CGDirectDisplayID? {
         if let current = onlineDisplays().first(where: { CGDisplayIsBuiltin($0) != 0 }) {
             lastKnownBuiltinID = current
             return current
+        }
+        if let hidden = skyLightDisplays().first(where: { CGDisplayIsBuiltin($0) != 0 }) {
+            lastKnownBuiltinID = hidden
+            return hidden
         }
         return lastKnownBuiltinID
     }
@@ -114,16 +150,24 @@ enum InternalDisplay {
     /// outcome that leaves someone unable to see their machine.
     @discardableResult
     static func enable(attempts: Int = 1) -> Bool {
-        guard let id = builtinID() else { return false }
         for attempt in 1...max(1, attempts) {
-            if apply(id: id, enabled: true) { return true }
+            // Re-resolved every time round: an earlier attempt can itself
+            // change the numbering.
+            if let id = builtinID(), apply(id: id, enabled: true) { return true }
             NSLog("ClamshellKeeper: re-enabling the built-in display failed (attempt \(attempt))")
             usleep(250_000)
         }
-        // Last resort, and public API: put every display back the way the
-        // system remembers it.
-        CGRestorePermanentDisplayConfiguration()
-        usleep(500_000)
+
+        // Blunt fallback: enable everything SkyLight lists. Enabling a display
+        // that is already enabled is a no-op, so the only cost is a moment of
+        // reconfiguration, and it needs no correct ID to work.
+        //
+        // Note what is deliberately NOT here: CGRestorePermanentDisplayConfiguration().
+        // It restores the permanent configuration, and the enabled bit is not
+        // part of it — com.apple.windowserver.displays.plist has no Enabled or
+        // Active key at all — so it cannot bring a disabled panel back.
+        NSLog("ClamshellKeeper: falling back to enabling every known display")
+        for id in skyLightDisplays() { _ = apply(id: id, enabled: true) }
         return builtinIsActive()
     }
 
